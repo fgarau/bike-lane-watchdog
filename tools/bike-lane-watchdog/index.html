@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bike Lane Watchdog</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --panel2: #1c2330; --line: #2a3342; --text: #e6edf3;
+    --muted: #8b98a9; --green: #2fbf71; --green-dim: #1d6b45; --amber: #f2b33d; --red: #f0544f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: var(--bg); color: var(--text); }
+  header { padding: 22px 32px 18px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+           background: linear-gradient(90deg, rgba(47,191,113,.14), transparent 60%); }
+  .logo { width: 46px; height: 46px; border-radius: 10px; background: var(--green); display: grid; place-items: center; font-size: 26px; }
+  h1 { margin: 0; font-size: 22px; letter-spacing: .2px; }
+  .sub { color: var(--muted); margin-top: 2px; }
+  .status { margin-left: auto; color: var(--muted); font-size: 12px; text-align: right; }
+  .status button { margin-top: 4px; }
+  main { padding: 22px 32px 60px; display: grid; grid-template-columns: 300px 1fr; gap: 24px; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+  .stats { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .stat .v { font-size: 28px; font-weight: 700; }
+  .stat .l { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .6px; }
+  .stat.hl .v { color: var(--green); }
+  .stat.warn .v { color: var(--red); }
+  aside { display: flex; flex-direction: column; gap: 16px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .panel h3 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
+  .bar { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; margin-bottom: 8px; cursor: pointer; }
+  .bar:hover .name { color: var(--green); }
+  .bar .track { grid-column: 1 / -1; height: 6px; background: var(--panel2); border-radius: 3px; overflow: hidden; }
+  .bar .fill { height: 100%; background: var(--green); border-radius: 3px; }
+  .bar.active .name { color: var(--green); font-weight: 600; }
+  .empty { color: var(--muted); font-size: 13px; }
+  input[type=text], select { width: 100%; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 9px 10px; font: inherit; }
+  button { background: var(--green); color: #04110a; border: 0; border-radius: 8px; padding: 8px 14px; font: inherit; font-weight: 600; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); font-weight: 500; }
+  button:disabled { opacity: .5; cursor: wait; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; align-items: center; }
+  .chip { background: var(--panel); border: 1px solid var(--line); color: var(--text); padding: 6px 12px; border-radius: 999px; cursor: pointer; font-size: 13px; }
+  .chip.on { background: var(--green-dim); border-color: var(--green); }
+  .chips .count { color: var(--muted); margin-left: auto; font-size: 13px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; cursor: pointer; transition: border-color .15s, transform .15s; }
+  .card:hover { border-color: var(--green); transform: translateY(-2px); }
+  .card.rejected { opacity: .55; }
+  .card video { width: 100%; aspect-ratio: 16/9; display: block; background: #000; object-fit: cover; }
+  .card .body { padding: 10px 12px 12px; }
+  .card .t { font-weight: 600; margin-bottom: 4px; }
+  .card .meta { color: var(--muted); font-size: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .card .ev { margin-top: 6px; font-size: 12.5px; color: #c4cfdc; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .sev { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; font-size: 12px; padding: 2px 8px; border-radius: 999px; }
+  .sev1, .sev2 { background: rgba(242,179,61,.15); color: var(--amber); }
+  .sev3, .sev4 { background: rgba(240,84,79,.15); color: #ff8a80; }
+  .sev5 { background: var(--red); color: #fff; }
+  .sev0 { background: var(--panel2); color: var(--muted); }
+  .tag { background: var(--panel2); border-radius: 4px; padding: 1px 6px; }
+  .tag.co { background: rgba(47,191,113,.15); color: var(--green); font-weight: 600; }
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: none; align-items: center; justify-content: center; padding: 24px; z-index: 10; }
+  .modal-bg.open { display: flex; }
+  .modal { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; width: min(1100px, 100%); max-height: 92vh; overflow: auto; display: grid; grid-template-columns: 1.3fr 1fr; }
+  @media (max-width: 900px) { .modal { grid-template-columns: 1fr; } }
+  .modal video { width: 100%; background: #000; display: block; }
+  .modal .left { background: #000; display: flex; flex-direction: column; justify-content: center; }
+  .modal .right { padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; }
+  .modal h2 { margin: 0; font-size: 19px; }
+  .kv { display: grid; grid-template-columns: 120px 1fr; gap: 4px 10px; font-size: 13px; }
+  .kv div:nth-child(odd) { color: var(--muted); }
+  .caption { font-size: 12.5px; color: #c4cfdc; background: var(--panel2); border-radius: 8px; padding: 10px; max-height: 140px; overflow: auto; }
+  .caption mark { background: rgba(47,191,113,.3); color: inherit; border-radius: 2px; }
+  textarea { width: 100%; min-height: 230px; background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 10px; font: 12.5px/1.5 ui-monospace, Menlo, monospace; }
+  .close { position: absolute; top: 18px; right: 24px; background: none; color: var(--text); font-size: 26px; }
+  .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--muted); border-top-color: var(--green); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  a { color: var(--green); }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">🚲</div>
+  <div>
+    <h1>Bike Lane Watchdog</h1>
+    <div class="sub">Every blocked bike lane in our New York rides, found by video AI and turned into a ready-to-file 311 report.</div>
+  </div>
+  <div class="status" id="status"></div>
+</header>
+
+<main>
+  <section class="stats" id="stats"></section>
+
+  <aside>
+    <div class="panel">
+      <h3>Hunt for something else</h3>
+      <form id="huntForm" class="row">
+        <input type="text" id="huntQ" placeholder="e.g. scaffolding in the bike lane">
+        <button id="huntBtn">Go</button>
+      </form>
+      <div class="hint" id="huntHint">Searches the NYC ride footage, then the AI checks each hit.</div>
+    </div>
+    <div class="panel">
+      <h3>Worst offenders</h3>
+      <div id="companies"></div>
+    </div>
+    <div class="panel">
+      <h3>What blocks the lane</h3>
+      <div id="vehicles"></div>
+    </div>
+    <div class="panel">
+      <h3>How it works</h3>
+      <div class="empty">
+        1. Cosmos Reason captioned every 5-second clip of the ride; YOLO counted objects.<br>
+        2. We pull every clip of the ride from VastDB (camera <code id="cam"></code>).<br>
+        3. An LLM on W&amp;B Inference (<span id="model"></span>) reviews each hit and extracts vehicle, company and severity.<br>
+        4. One click drafts a 311 "Blocked Bike Lane" complaint.
+      </div>
+    </div>
+  </aside>
+
+  <section>
+    <div class="chips" id="chips"></div>
+    <div class="grid" id="grid"></div>
+  </section>
+</main>
+
+<div class="modal-bg" id="modalBg">
+  <button class="close" onclick="closeModal()">×</button>
+  <div class="modal" id="modal"></div>
+</div>
+
+<script>
+const BASE = location.pathname.endsWith('/') ? location.pathname : location.pathname + '/';
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const videoUrl = src => `${BASE}video?source=${encodeURIComponent(src)}`;
+
+let data = { incidents: [] };
+let filter = { mode: 'blocked', company: null, vehicle: null, hunt: null };
+let current = null;
+
+async function load() {
+  const r = await fetch(BASE + 'api/incidents');
+  data = await r.json();
+  render();
+  if (data.scanning) setTimeout(load, 3000);
+}
+
+function blocked() { return data.incidents.filter(i => i.blocked); }
+
+function tally(list, key) {
+  const m = {};
+  list.forEach(i => { const k = i[key]; if (k) m[k] = (m[k] || 0) + 1; });
+  return Object.entries(m).sort((a, b) => b[1] - a[1]);
+}
+
+function render() {
+  const b = blocked();
+  const forced = b.filter(i => i.cyclist_forced_out).length;
+  const severe = b.filter(i => i.severity >= 3).length;
+  const rides = new Set(b.map(i => i.original_video)).size;
+  const clips = data.camera_clips;
+  $('stats').innerHTML = [
+    [clips ?? '–', 'clips of NYC ride footage indexed'],
+    [data.candidates, 'clips reviewed by AI'],
+    [b.length, 'blocked bike lanes confirmed', 'hl'],
+    [clips ? `1 in ${Math.max(1, Math.round(clips / Math.max(1, b.length)))}` : '–', 'clips show a blocked lane'],
+    [severe, 'fully blocked (severity ≥ 3)', 'warn'],
+    [forced, 'cyclist forced out of lane', 'warn'],
+  ].map(([v, l, c]) => `<div class="stat ${c || ''}"><div class="v">${esc(v)}</div><div class="l">${esc(l)}</div></div>`).join('');
+
+  $('status').innerHTML = data.scanning
+    ? `<span class="spinner"></span> Scanning the archive…`
+    : `${data.error ? `<span style="color:var(--red)">${esc(data.error)}</span><br>` : ''}Reviewed ${data.candidates} clips · ${rides} ride segments affected<br>
+       Last review ${data.scanned_at ? new Date(data.scanned_at).toLocaleString() : 'never'}`;
+  $('cam').textContent = data.camera_id || '';
+  $('model').textContent = data.model || '';
+
+  renderBars('companies', tally(b, 'company'), 'company', 'No company markings detected yet');
+  renderBars('vehicles', tally(b, 'vehicle_type').concat(
+    tally(b.filter(i => i.obstruction !== 'vehicle'), 'obstruction')), 'vehicle', 'Nothing yet');
+
+  const chips = [
+    ['blocked', `Blocked (${b.length})`],
+    ['severe', `Severity ≥ 3 (${severe})`],
+    ['forced', `Forced into traffic (${forced})`],
+    ['all', `All reviewed (${data.incidents.length})`],
+  ];
+  if (filter.hunt) chips.push(['hunt', `Hunt: “${filter.hunt.query}” (${filter.hunt.results.length})`]);
+  const active = [filter.company, filter.vehicle].filter(Boolean);
+  $('chips').innerHTML = chips.map(([k, l]) =>
+    `<span class="chip ${filter.mode === k ? 'on' : ''}" onclick="setMode('${k}')">${esc(l)}</span>`).join('') +
+    active.map(a => `<span class="chip on" onclick="clearFacet()">${esc(a)} ×</span>`).join('') +
+    `<span class="count" id="count"></span>`;
+
+  renderGrid();
+}
+
+function renderBars(el, rows, facet, emptyMsg) {
+  if (!rows.length) { $(el).innerHTML = `<div class="empty">${emptyMsg}</div>`; return; }
+  const max = rows[0][1];
+  $(el).innerHTML = rows.slice(0, 8).map(([k, n]) =>
+    `<div class="bar ${filter[facet] === k ? 'active' : ''}" onclick="setFacet('${facet}', ${esc(JSON.stringify(k))})">
+       <span class="name">${esc(k)}</span><span>${n}</span>
+       <div class="track"><div class="fill" style="width:${(n / max) * 100}%"></div></div>
+     </div>`).join('');
+}
+
+function visible() {
+  let list = filter.mode === 'hunt' && filter.hunt ? filter.hunt.results
+    : filter.mode === 'all' ? data.incidents : blocked();
+  if (filter.mode === 'severe') list = list.filter(i => i.severity >= 3);
+  if (filter.mode === 'forced') list = list.filter(i => i.cyclist_forced_out);
+  if (filter.company) list = list.filter(i => i.company === filter.company);
+  if (filter.vehicle) list = list.filter(i => i.vehicle_type === filter.vehicle || i.obstruction === filter.vehicle);
+  return list;
+}
+
+function renderGrid() {
+  const list = visible();
+  $('count').textContent = `${list.length} clips`;
+  if (!list.length) {
+    $('grid').innerHTML = `<div class="empty">${data.scanning ? 'Scanning… results will appear shortly.' : 'No clips match this filter.'}</div>`;
+    return;
+  }
+  $('grid').innerHTML = list.map(i => `
+    <div class="card ${i.blocked ? '' : 'rejected'}" onclick="openModal('${esc(i.source)}')"
+         onmouseenter="this.querySelector('video').play().catch(()=>{})" onmouseleave="this.querySelector('video').pause()">
+      <video muted loop playsinline preload="metadata" src="${videoUrl(i.source)}#t=0.5"></video>
+      <div class="body">
+        <div class="row" style="justify-content:space-between">
+          <div class="t">${esc(i.headline)}</div>
+          <span class="sev sev${i.severity}">${i.blocked ? 'SEV ' + i.severity : 'CLEAR'}</span>
+        </div>
+        <div class="meta">
+          ${i.company ? `<span class="tag co">${esc(i.company)}</span>` : ''}
+          ${i.vehicle_type ? `<span class="tag">${esc(i.vehicle_type)}</span>` : ''}
+          ${i.cyclist_forced_out ? `<span class="tag" style="color:var(--red)">forced out</span>` : ''}
+          <span>${fmtTime(i)}</span>
+        </div>
+        <div class="ev">${esc(i.evidence || i.caption)}</div>
+      </div>
+    </div>`).join('');
+}
+
+function fmtTime(i) {
+  return `${(i.filename || '').replace(/_segment.*/, '')} · ${i.segment_start_sec ?? 0}–${i.segment_end_sec ?? 0}s`;
+}
+
+function setMode(m) { filter.mode = m; render(); }
+function setFacet(facet, v) { filter[facet] = filter[facet] === v ? null : v; if (filter.mode === 'hunt') filter.mode = 'blocked'; render(); }
+function clearFacet() { filter.company = null; filter.vehicle = null; render(); }
+
+function highlight(caption, evidence) {
+  const c = esc(caption), e = esc(evidence || '').trim();
+  return e && c.includes(e) ? c.replace(e, `<mark>${e}</mark>`) : c;
+}
+
+function openModal(source) {
+  const all = data.incidents.concat(filter.hunt ? filter.hunt.results : []);
+  const i = all.find(x => x.source === source);
+  if (!i) return;
+  current = i;
+  const counts = Object.entries(i.object_counts || {}).sort((a, b) => b[1] - a[1]).slice(0, 8)
+    .map(([k, n]) => `${esc(k)} ×${n}`).join(', ');
+  $('modal').innerHTML = `
+    <div class="left"><video controls autoplay muted loop playsinline src="${videoUrl(i.source)}"></video></div>
+    <div class="right">
+      <div class="row" style="justify-content:space-between"><h2>${esc(i.headline)}</h2>
+        <span class="sev sev${i.severity}">${i.blocked ? 'SEVERITY ' + i.severity + '/5' : 'NOT BLOCKED'}</span></div>
+      <div class="kv">
+        <div>Obstruction</div><div>${esc(i.obstruction)}</div>
+        <div>Vehicle</div><div>${esc(i.vehicle_description || i.vehicle_type || '–')}</div>
+        <div>Company</div><div>${esc(i.company || 'not visible')}</div>
+        <div>Cyclist forced out</div><div>${i.cyclist_forced_out ? 'yes' : 'no'}</div>
+        <div>Clip</div><div>${esc(fmtTime(i))}</div>
+        <div>YOLO saw</div><div>${counts || '–'}</div>
+        <div>Found by</div><div>${i.matched_query ? `search “${esc(i.matched_query)}” (${i.similarity})` : 'full-ride review'}</div>
+      </div>
+      <div class="caption">${highlight(i.caption, i.evidence)}</div>
+      <div class="row">
+        <button id="reportBtn" onclick="draft()">Draft 311 complaint</button>
+        <a href="https://portal.311.nyc.gov/" target="_blank" rel="noopener">Open NYC 311 ↗</a>
+      </div>
+      <div id="reportBox"></div>
+    </div>`;
+  $('modalBg').classList.add('open');
+}
+
+function closeModal() {
+  $('modalBg').classList.remove('open');
+  $('modal').innerHTML = '';
+  current = null;
+}
+$('modalBg').addEventListener('click', e => { if (e.target === $('modalBg')) closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+async function draft() {
+  const btn = $('reportBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Drafting…';
+  try {
+    const r = await fetch(BASE + 'api/report', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: current.source }) });
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    $('reportBox').innerHTML = `<textarea id="reportText">${esc(d.report)}</textarea>
+      <div class="row" style="margin-top:6px"><button class="ghost" onclick="copyReport()">Copy</button></div>`;
+  } catch (e) {
+    $('reportBox').innerHTML = `<div style="color:var(--red)">Could not draft report: ${esc(e.message)}</div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Redraft';
+  }
+}
+
+function copyReport() {
+  const t = $('reportText'); t.select();
+  navigator.clipboard?.writeText(t.value).catch(() => document.execCommand('copy'));
+}
+
+$('huntForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const q = $('huntQ').value.trim();
+  if (!q) return;
+  $('huntBtn').disabled = true;
+  $('huntHint').innerHTML = '<span class="spinner"></span> Searching and reviewing…';
+  try {
+    const r = await fetch(BASE + 'api/hunt?q=' + encodeURIComponent(q));
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    filter.hunt = d; filter.mode = 'hunt'; filter.company = null; filter.vehicle = null;
+    $('huntHint').textContent = `${d.results.filter(i => i.blocked).length} of ${d.results.length} hits confirmed as blocking.`;
+    await load();
+  } catch (err) {
+    $('huntHint').innerHTML = `<span style="color:var(--red)">${esc(err.message)}</span>`;
+  } finally {
+    $('huntBtn').disabled = false;
+  }
+});
+
+load();
+</script>
+</body>
+</html>
